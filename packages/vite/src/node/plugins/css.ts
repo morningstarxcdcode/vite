@@ -1529,33 +1529,50 @@ async function compilePostCSS(
 
   if (isModule) {
     // Create a custom loader that can preprocess files
-    const postcssModulesUrl = createRequire(import.meta.url).resolve('postcss-modules/package.json')
+    const postcssModulesUrl = createRequire(import.meta.url).resolve(
+      'postcss-modules/package.json',
+    )
     const postcssModulesPath = path.dirname(postcssModulesUrl)
-    const FileSystemLoader = (await import(path.join(postcssModulesPath, 'build/FileSystemLoader.js'))).default
+    const FileSystemLoader = (
+      await import(path.join(postcssModulesPath, 'build/FileSystemLoader.js'))
+    ).default
 
     class PreprocessingLoader extends FileSystemLoader {
+      preprocessedCache: Map<string, string>
+
       constructor(root: string, plugins: any[], fileResolve?: Function) {
         super(root, plugins, fileResolve)
         this.preprocessedCache = new Map()
       }
 
       async fetch(_newPath: string, relativeTo: string, _trace?: string) {
-        const newPath = _newPath.replace(/^["']|["']$/g, "")
+        const newPath = _newPath.replace(/^["']|["']$/g, '')
         const trace = _trace || String.fromCharCode(this.importNr++)
 
-        const useFileResolve = typeof this.fileResolve === "function"
-        const fileResolvedPath = useFileResolve ? await this.fileResolve(newPath, relativeTo) : await Promise.resolve()
+        const useFileResolve = typeof this.fileResolve === 'function'
+        const fileResolvedPath = useFileResolve
+          ? await this.fileResolve(newPath, relativeTo)
+          : await Promise.resolve()
 
         if (fileResolvedPath && !path.isAbsolute(fileResolvedPath)) {
-          throw new Error('The returned path from the "fileResolve" option must be absolute.')
+          throw new Error(
+            'The returned path from the "fileResolve" option must be absolute.',
+          )
         }
 
         const relativeDir = path.dirname(relativeTo)
-        const rootRelativePath = fileResolvedPath || path.resolve(relativeDir, newPath)
+        const rootRelativePath =
+          fileResolvedPath || path.resolve(relativeDir, newPath)
 
-        let fileRelativePath = fileResolvedPath || path.resolve(path.resolve(this.root, relativeDir), newPath)
+        let fileRelativePath =
+          fileResolvedPath ||
+          path.resolve(path.resolve(this.root, relativeDir), newPath)
 
-        if (!useFileResolve && newPath[0] !== "." && !path.isAbsolute(newPath)) {
+        if (
+          !useFileResolve &&
+          newPath[0] !== '.' &&
+          !path.isAbsolute(newPath)
+        ) {
           try {
             fileRelativePath = createRequire(import.meta.url).resolve(newPath)
           } catch (_e) {
@@ -1571,14 +1588,16 @@ async function compilePostCSS(
         if (!source) {
           // Read and potentially preprocess the file
           source = await new Promise<string>((resolveRead, rejectRead) => {
-            this.fs.readFile(fileRelativePath, "utf-8", (err, data) => {
+            this.fs.readFile(fileRelativePath, 'utf-8', (err, data) => {
               if (err) rejectRead(err)
               else resolveRead(data)
             })
           })
 
           // Check if this file needs preprocessing
-          const lang = CSS_LANGS_RE.exec(fileRelativePath)?.[1] as CssLang | undefined
+          const lang = CSS_LANGS_RE.exec(fileRelativePath)?.[1] as
+            | CssLang
+            | undefined
           if (isPreProcessor(lang)) {
             // Preprocess the content
             const preprocessResult = await compileCSSPreprocessors(
@@ -1595,7 +1614,12 @@ async function compilePostCSS(
           this.preprocessedCache.set(fileRelativePath, source)
         }
 
-        const { injectableSource, exportTokens } = await this.core.load(source, rootRelativePath, trace, this.fetch.bind(this))
+        const { injectableSource, exportTokens } = await this.core.load(
+          source,
+          rootRelativePath,
+          trace,
+          this.fetch.bind(this),
+        )
         this.sources[fileRelativePath] = injectableSource
         this.traces[trace] = fileRelativePath
         this.tokensByFile[fileRelativePath] = exportTokens
