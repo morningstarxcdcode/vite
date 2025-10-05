@@ -1616,7 +1616,7 @@ async function compilePostCSS(
 
         const { injectableSource, exportTokens } = await this.core.load(
           source,
-          rootRelativePath,
+          fileRelativePath,
           trace,
           this.fetch.bind(this),
         )
