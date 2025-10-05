@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import path from 'node:path'
+import os from 'node:os'
 import { createRequire } from 'node:module'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import postcssrc from 'postcss-load-config'
@@ -1543,18 +1544,44 @@ async function compilePostCSS(
           }
         },
         async resolve(id: string, importer: string) {
+          let resolved: string | undefined
           for (const key of getCssResolversKeys(atImportResolvers)) {
-            const resolved = await atImportResolvers[key](
-              environment,
-              id,
-              importer,
-            )
-            if (resolved) {
-              return path.resolve(resolved)
+            const res = await atImportResolvers[key](environment, id, importer)
+            if (res) {
+              resolved = res
+              break
             }
           }
+          if (!resolved) {
+            resolved = id
+          }
 
-          return id
+          const resolvedPath = path.resolve(resolved)
+          const lang = CSS_LANGS_RE.exec(resolvedPath)?.[1] as
+            | CssLang
+            | undefined
+          if (isPreProcessor(lang)) {
+            // Preprocess the file before postcss-modules parses it
+            const sourceCode = await fsp.readFile(resolvedPath, 'utf-8')
+            const preprocessResult = await compileCSSPreprocessors(
+              environment,
+              resolvedPath,
+              lang,
+              sourceCode,
+              workerController,
+            )
+            preprocessResult.deps?.forEach((dep) => deps.add(dep))
+
+            // Create a temporary file with the preprocessed content
+            const tempDir = os.tmpdir()
+            const tempFileName = `vite-css-modules-${Date.now()}-${Math.random().toString(36).substring(2)}.css`
+            const tempFilePath = path.join(tempDir, tempFileName)
+            await fsp.writeFile(tempFilePath, preprocessResult.code)
+
+            return tempFilePath
+          }
+
+          return resolvedPath
         },
       }),
     )
