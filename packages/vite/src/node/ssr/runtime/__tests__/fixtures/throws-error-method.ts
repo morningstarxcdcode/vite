@@ -1,8 +1,3 @@
-
-
-
-
-
 interface Foo {
   bar: string
 }
@@ -10,4 +5,3 @@ interface Foo {
 export function throwError(foo?: Foo): void {
   throw new Error('method error')
 }
-
