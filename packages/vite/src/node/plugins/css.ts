@@ -1586,10 +1586,14 @@ async function compilePostCSS(
         if (!source) {
           // Read and potentially preprocess the file
           source = await new Promise<string>((resolveRead, rejectRead) => {
-            this.fs.readFile(fileRelativePath, 'utf-8', (err: NodeJS.ErrnoException | null, data: string) => {
-              if (err) rejectRead(err)
-              else resolveRead(data)
-            })
+            this.fs.readFile(
+              fileRelativePath,
+              'utf-8',
+              (err: NodeJS.ErrnoException | null, data: string) => {
+                if (err) rejectRead(err)
+                else resolveRead(data)
+              },
+            )
           })
 
           // Check if this file needs preprocessing
