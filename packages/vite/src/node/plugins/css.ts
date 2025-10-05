@@ -1532,7 +1532,7 @@ async function compilePostCSS(
     const postcssModulesUrl = createRequire(import.meta.url).resolve('postcss-modules/package.json')
     const postcssModulesPath = path.dirname(postcssModulesUrl)
     const FileSystemLoader = (await import(path.join(postcssModulesPath, 'build/FileSystemLoader.js'))).default
-    
+
     class PreprocessingLoader extends FileSystemLoader {
       constructor(root: string, plugins: any[], fileResolve?: Function) {
         super(root, plugins, fileResolve)
