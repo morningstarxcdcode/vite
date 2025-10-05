@@ -103,6 +103,44 @@ composes: bar from '@/css/bar.module.css';
     )
   })
 
+  test('css module compose/from preprocessor files', async () => {
+    const { transform } = await createCssPluginTransform({
+      configFile: false,
+      resolve: {
+        alias: [
+          {
+            find: '@',
+            replacement: path.join(
+              import.meta.dirname,
+              './fixtures/css-module-compose',
+            ),
+          },
+        ],
+      },
+    })
+
+    const result = await transform(
+      `\
+.foo {
+position: fixed;
+composes: bar from '@/css/bar.module.scss';
+}`,
+      '/css/foo.module.scss',
+    )
+
+    expect(result.code).toMatchInlineSnapshot(
+      `
+      "._bar_1dfmw_1 {
+        display: block;
+        background: #f0f;
+      }
+      ._foo_1imic_1 {
+        position: fixed;
+      }"
+    `,
+    )
+  })
+
   test('custom generateScopedName', async () => {
     const { transform } = await createCssPluginTransform({
       configFile: false,

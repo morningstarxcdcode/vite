@@ -1528,10 +1528,112 @@ async function compilePostCSS(
   let modules: Record<string, string> | undefined
 
   if (isModule) {
+    // Create a custom loader that can preprocess files
+    const postcssModulesUrl = createRequire(import.meta.url).resolve(
+      'postcss-modules/package.json',
+    )
+    const postcssModulesPath = path.dirname(postcssModulesUrl)
+    const FileSystemLoader = (
+      await import(path.join(postcssModulesPath, 'build/FileSystemLoader.js'))
+    ).default
+
+    class PreprocessingLoader extends FileSystemLoader {
+      preprocessedCache: Map<string, string>
+
+      constructor(root: string, plugins: any[], fileResolve?: Function) {
+        super(root, plugins, fileResolve)
+        this.preprocessedCache = new Map()
+      }
+
+      async fetch(_newPath: string, relativeTo: string, _trace?: string) {
+        const newPath = _newPath.replace(/^["']|["']$/g, '')
+        const trace = _trace || String.fromCharCode(this.importNr++)
+
+        const useFileResolve = typeof this.fileResolve === 'function'
+        const fileResolvedPath = useFileResolve
+          ? await this.fileResolve(newPath, relativeTo)
+          : await Promise.resolve()
+
+        if (fileResolvedPath && !path.isAbsolute(fileResolvedPath)) {
+          throw new Error(
+            'The returned path from the "fileResolve" option must be absolute.',
+          )
+        }
+
+        const relativeDir = path.dirname(relativeTo)
+
+        let fileRelativePath =
+          fileResolvedPath ||
+          path.resolve(path.resolve(this.root, relativeDir), newPath)
+
+        if (
+          !useFileResolve &&
+          newPath[0] !== '.' &&
+          !path.isAbsolute(newPath)
+        ) {
+          try {
+            fileRelativePath = createRequire(import.meta.url).resolve(newPath)
+          } catch (_e) {
+            // noop
+          }
+        }
+
+        const tokens = this.tokensByFile[fileRelativePath]
+        if (tokens) return tokens
+
+        // Check if we have preprocessed content in cache
+        let source = this.preprocessedCache.get(fileRelativePath)
+        if (!source) {
+          // Read and potentially preprocess the file
+          source = await new Promise<string>((resolveRead, rejectRead) => {
+            this.fs.readFile(
+              fileRelativePath,
+              'utf-8',
+              (err: NodeJS.ErrnoException | null, data: string) => {
+                if (err) rejectRead(err)
+                else resolveRead(data)
+              },
+            )
+          })
+
+          // Check if this file needs preprocessing
+          const lang = CSS_LANGS_RE.exec(fileRelativePath)?.[1] as
+            | CssLang
+            | undefined
+          if (isPreProcessor(lang)) {
+            // Preprocess the content
+            const preprocessResult = await compileCSSPreprocessors(
+              environment,
+              fileRelativePath,
+              lang,
+              source,
+              workerController,
+            )
+            preprocessResult.deps?.forEach((dep) => deps.add(dep))
+            source = preprocessResult.code
+          }
+
+          this.preprocessedCache.set(fileRelativePath, source)
+        }
+
+        const { injectableSource, exportTokens } = await this.core.load(
+          source,
+          fileRelativePath,
+          trace,
+          this.fetch.bind(this),
+        )
+        this.sources[fileRelativePath] = injectableSource
+        this.traces[trace] = fileRelativePath
+        this.tokensByFile[fileRelativePath] = exportTokens
+        return exportTokens
+      }
+    }
+
     postcssPlugins.unshift(
       (await importPostcssModules()).default({
         ...modulesOptions,
         localsConvention: modulesOptions?.localsConvention,
+        Loader: PreprocessingLoader,
         getJSON(
           cssFileName: string,
           _modules: Record<string, string>,
